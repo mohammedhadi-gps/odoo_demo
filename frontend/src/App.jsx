@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchBoard, movePo, sendTestWebhook, subscribeBoard } from "./api";
+import { fetchBoard, movePo, sendTestWebhook } from "./api";
 import Board from "./Board.jsx";
 
 const COLUMNS = [
@@ -24,9 +24,11 @@ export default function App() {
       const data = await fetchBoard(projectFilter || undefined);
       setColumns(data.columns || {});
       setError("");
+      setLive(true);
       setLastSync(new Date());
     } catch (err) {
       setError(err.message);
+      setLive(false);
     } finally {
       setLoading(false);
     }
@@ -34,23 +36,8 @@ export default function App() {
 
   useEffect(() => {
     load();
-    const timer = setInterval(load, 15000);
-    const stop = subscribeBoard((event) => {
-      setLive(true);
-      if (event?.type === "po") {
-        setHighlightId(event.po_id);
-        setNotice(
-          event.created
-            ? `New PO from Odoo: ${event.display_name}`
-            : `PO updated from Odoo: ${event.display_name}`
-        );
-      }
-      load();
-    });
-    return () => {
-      clearInterval(timer);
-      stop();
-    };
+    const timer = setInterval(load, 5000);
+    return () => clearInterval(timer);
   }, [load]);
 
   useEffect(() => {

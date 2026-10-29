@@ -30,16 +30,3 @@ export function sendTestWebhook(payload) {
     body: JSON.stringify(payload),
   });
 }
-
-export function subscribeBoard(onEvent) {
-  const source = new EventSource(`${API}/po/events`);
-  source.onmessage = (event) => {
-    try {
-      onEvent(JSON.parse(event.data));
-    } catch {
-      onEvent({ type: "refresh" });
-    }
-  };
-  source.onerror = () => {};
-  return () => source.close();
-}

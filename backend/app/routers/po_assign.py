@@ -1,13 +1,10 @@
-import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.crud import get_purchase_order, list_purchase_orders, update_status
 from app.database import get_db
-from app.events import subscribe, unsubscribe
 from app.models import KANBAN_COLUMNS
 from app.schemas import KanbanBoard, ProcessPayload, PurchaseOrderOut, StatusUpdate
 
@@ -30,33 +27,6 @@ def list_all_pos(
     status: str | None = Query(default=None),
 ):
     return list_purchase_orders(db, project_id=project_id, status=status)
-
-
-@router.get("/po/events")
-async def po_events():
-    queue = subscribe()
-
-    async def stream():
-        try:
-            yield "event: ping\ndata: {}\n\n"
-            while True:
-                try:
-                    data = await asyncio.wait_for(queue.get(), timeout=20)
-                    yield f"data: {data}\n\n"
-                except asyncio.TimeoutError:
-                    yield "event: ping\ndata: {}\n\n"
-        finally:
-            unsubscribe(queue)
-
-    return StreamingResponse(
-        stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 @router.get("/po/board", response_model=KanbanBoard)
