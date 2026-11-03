@@ -353,3 +353,48 @@ dd {
   color: var(--danger);
   width: 100%;
 }
+
+/* ── Card top right (tag + delete) ── */
+.card-top-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.delete-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.delete-btn:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.delete-btn.confirm {
+  border-color: var(--danger);
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.delete-cancel {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.delete-cancel:hover {
+  border-color: var(--text);
+  color: var(--text);
+}

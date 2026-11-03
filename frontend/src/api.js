@@ -49,7 +49,19 @@ export function syncPo(id) {
   return request(`/po/${id}/sync`, { method: "POST" });
 }
 
-/** Pull the latest confirmed POs from Odoo into the kanban. */
-export function pullFromOdoo(limit = 50) {
+/** Pull the latest 3 confirmed POs from Odoo into the kanban. */
+export function pullFromOdoo(limit = 3) {
   return request(`/odoo/pull?limit=${limit}`, { method: "POST" });
+}
+
+/** Delete a PO from the kanban board by its local DB id. */
+export async function deletePo(id) {
+  const response = await fetch(`${API}/po/${id}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(detail.detail || "Delete failed");
+  }
 }

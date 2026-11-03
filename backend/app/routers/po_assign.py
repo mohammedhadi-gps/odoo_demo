@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.crud import get_purchase_order, list_purchase_orders, update_status
@@ -80,3 +80,14 @@ def process_pending_po(
         "status": "in_progress",
         "wp_ids": body.wp_ids,
     }
+
+@router.delete("/po/{row_id}", status_code=204)
+def delete_po(row_id: int, db: Session = Depends(get_db)):
+    """Remove a purchase order and its line items from the kanban board."""
+    row = get_purchase_order(db, row_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="PO not found")
+    db.delete(row)
+    db.commit()
+    logger.info("Deleted PO id=%s (%s)", row_id, row.display_name)
+    return Response(status_code=204)

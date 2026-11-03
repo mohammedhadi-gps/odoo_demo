@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { syncPo } from "./api";
+import { deletePo, syncPo } from "./api";
 
 function fmt(val) {
   return val || "—";
@@ -41,6 +41,8 @@ export default function Card({ card, highlight, onRefresh }) {
   const [expanded, setExpanded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const isSynced = Boolean(card.odoo_synced_at);
 
@@ -58,6 +60,23 @@ export default function Card({ card, highlight, onRefresh }) {
     }
   }
 
+  async function handleDelete(e) {
+    e.stopPropagation();
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deletePo(card.id);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      setSyncError(err.message);
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  }
+
   return (
     <article
       className={`card ${highlight ? "highlight" : ""}`}
@@ -70,7 +89,27 @@ export default function Card({ card, highlight, onRefresh }) {
       {/* ── Header ── */}
       <div className="card-top">
         <strong>{card.display_name}</strong>
-        {card.category ? <span className="tag">{card.category}</span> : null}
+        <div className="card-top-right">
+          {card.category ? <span className="tag">{card.category}</span> : null}
+          <button
+            type="button"
+            className={`delete-btn ${confirmDelete ? "confirm" : ""}`}
+            onClick={handleDelete}
+            disabled={deleting}
+            title={confirmDelete ? "Click again to confirm delete" : "Delete PO"}
+          >
+            {deleting ? "…" : confirmDelete ? "Sure?" : "✕"}
+          </button>
+          {confirmDelete && !deleting && (
+            <button
+              type="button"
+              className="delete-cancel"
+              onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
       </div>
 
       {card.subject ? <p className="subject">{card.subject}</p> : null}
