@@ -10,7 +10,20 @@ from app.database import Base, engine
 from app.routers import odoo_sync, po_assign, webhook
 
 logging.basicConfig(level=logging.INFO)
-Base.metadata.create_all(bind=engine)
+logger = logging.getLogger(__name__)
+
+# Create tables — wrapped so a bad DATABASE_URL gives a readable log instead of
+# a cryptic 500 on the first request.
+try:
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database tables verified/created.")
+except Exception as _db_err:
+    logger.error(
+        "Could not connect to the database on startup: %s\n"
+        "Check that DATABASE_URL is set correctly in Vercel environment variables "
+        "and that the Supabase Transaction Pooler URL (port 6543) is used.",
+        _db_err,
+    )
 
 app = FastAPI(title=settings.app_name)
 
