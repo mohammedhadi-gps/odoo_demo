@@ -80,6 +80,35 @@ async def _post(payload: dict) -> Any:
     return data.get("result")
 
 
+async def fetch_latest_purchase_orders(limit: int = 50) -> list[dict]:
+    """
+    Fetch the most recent confirmed purchase orders from Odoo.
+    Orders by date_approve descending (most recently approved first).
+    Only returns POs in state 'purchase' or 'done' (i.e. confirmed, not drafts).
+    """
+    if not settings.odoo_configured:
+        logger.warning("Odoo connection not configured — skipping bulk PO fetch")
+        return []
+
+    payload = _build_payload(
+        model="purchase.order",
+        method="search_read",
+        args=[[["state", "in", ["purchase", "done"]]]],
+        kwargs={
+            "fields": PO_FIELDS,
+            "limit": limit,
+            "order": "date_approve desc",
+        },
+    )
+    try:
+        result = await _post(payload)
+        logger.info("Fetched %d POs from Odoo", len(result or []))
+        return result or []
+    except Exception:
+        logger.exception("Failed to fetch latest POs from Odoo")
+        return []
+
+
 async def fetch_purchase_order(odoo_id: int) -> dict | None:
     """
     Fetch a single purchase.order by its Odoo ID.

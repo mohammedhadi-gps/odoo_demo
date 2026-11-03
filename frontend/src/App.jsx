@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchBoard, movePo, sendTestWebhook } from "./api";
+import { fetchBoard, movePo, pullFromOdoo, sendTestWebhook, subscribeBoard } from "./api";
 import Board from "./Board.jsx";
 
 const COLUMNS = [
@@ -18,6 +18,7 @@ export default function App() {
   const [lastSync, setLastSync] = useState(null);
   const [highlightId, setHighlightId] = useState(null);
   const [live, setLive] = useState(false);
+  const [pulling, setPulling] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -83,6 +84,23 @@ export default function App() {
     }
   }
 
+  async function handlePullFromOdoo() {
+    setPulling(true);
+    setError("");
+    try {
+      const result = await pullFromOdoo(50);
+      setNotice(
+        `Pulled from Odoo: ${result.created} new, ${result.updated} updated` +
+        (result.failed?.length ? `, ${result.failed.length} failed` : "")
+      );
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPulling(false);
+    }
+  }
+
   const total = Object.values(columns).reduce((sum, list) => sum + (list?.length || 0), 0);
 
   return (
@@ -111,7 +129,15 @@ export default function App() {
           <button type="button" onClick={load}>
             Refresh
           </button>
-          <button type="button" className="primary" onClick={simulateWebhook}>
+          <button
+            type="button"
+            className="primary"
+            onClick={handlePullFromOdoo}
+            disabled={pulling}
+          >
+            {pulling ? "Pulling…" : "Pull from Odoo"}
+          </button>
+          <button type="button" onClick={simulateWebhook}>
             Simulate Odoo PO
           </button>
         </div>

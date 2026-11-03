@@ -48,3 +48,8 @@ export function subscribeBoard(onEvent) {
 export function syncPo(id) {
   return request(`/po/${id}/sync`, { method: "POST" });
 }
+
+/** Pull the latest confirmed POs from Odoo into the kanban. */
+export function pullFromOdoo(limit = 50) {
+  return request(`/odoo/pull?limit=${limit}`, { method: "POST" });
+}
