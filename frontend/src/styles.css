@@ -252,3 +252,104 @@ dd {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Enriched Odoo fields ── */
+.enriched {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+/* ── Line items ── */
+.lines-toggle {
+  margin-top: 10px;
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.lines-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.lines-wrap {
+  margin-top: 8px;
+  overflow-x: auto;
+}
+
+.lines-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.lines-table th {
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.lines-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+}
+
+.lines-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.lines-empty {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 8px 0 0;
+}
+
+/* ── Sync footer ── */
+.card-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.sync-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.sync-btn:hover:not(:disabled) {
+  background: rgba(123, 211, 137, 0.1);
+}
+
+.sync-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sync-ts {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.sync-error {
+  font-size: 11px;
+  color: var(--danger);
+  width: 100%;
+}

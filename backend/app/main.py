@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import Base, engine
-from app.routers import po_assign, webhook
+from app.routers import odoo_sync, po_assign, webhook
 
 logging.basicConfig(level=logging.INFO)
 Base.metadata.create_all(bind=engine)
@@ -25,6 +25,7 @@ app.add_middleware(
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(webhook.router)
 api_router.include_router(po_assign.router)
+api_router.include_router(odoo_sync.router)
 app.include_router(api_router)
 
 

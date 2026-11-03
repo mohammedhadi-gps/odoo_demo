@@ -30,3 +30,21 @@ export function sendTestWebhook(payload) {
     body: JSON.stringify(payload),
   });
 }
+
+export function subscribeBoard(onEvent) {
+  const source = new EventSource(`${API}/po/events`);
+  source.onmessage = (event) => {
+    try {
+      onEvent(JSON.parse(event.data));
+    } catch {
+      onEvent({ type: "refresh" });
+    }
+  };
+  source.onerror = () => {};
+  return () => source.close();
+}
+
+/** Trigger a manual Odoo JSON-RPC sync for one PO by its local DB id. */
+export function syncPo(id) {
+  return request(`/po/${id}/sync`, { method: "POST" });
+}

@@ -132,6 +132,7 @@ export default function App() {
         onDrop={onDrop}
         highlightId={highlightId}
         emptyNew="Waiting for a purchase order from Odoo"
+        onRefresh={load}
       />
     </div>
   );

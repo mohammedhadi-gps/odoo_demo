@@ -1,11 +1,15 @@
 import json
+import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import KANBAN_COLUMNS, PurchaseOrder, WebhookLog
+from app.models import KANBAN_COLUMNS, POLineItem, PurchaseOrder, WebhookLog
 from app.odoo_parse import normalize_po_payload
+
+logger = logging.getLogger(__name__)
 
 
 def list_purchase_orders(db: Session, project_id: str | None = None, status: str | None = None) -> list[PurchaseOrder]:
@@ -65,3 +69,26 @@ def update_status(db: Session, row: PurchaseOrder, status: str) -> PurchaseOrder
 def create_log(db: Session, log_type: str, message: str, payload: str | None) -> None:
     db.add(WebhookLog(log_type=log_type, message=message, payload=payload))
     db.commit()
+
+
+def apply_odoo_enrichment(db: Session, row: PurchaseOrder, enrichment: dict, lines: list[dict]) -> PurchaseOrder:
+    """
+    Apply fields fetched from Odoo JSON-RPC onto an existing PurchaseOrder row
+    and replace its line items.
+    """
+    row.vendor_name = enrichment.get("vendor_name") or row.vendor_name
+    row.po_number = enrichment.get("po_number") or row.po_number
+    row.confirmation_date = enrichment.get("confirmation_date") or row.confirmation_date
+    row.delivery_date = enrichment.get("delivery_date") or row.delivery_date
+    row.placement_date = enrichment.get("placement_date") or row.placement_date
+    row.odoo_synced_at = datetime.now(timezone.utc)
+
+    # Replace all line items
+    db.query(POLineItem).filter(POLineItem.purchase_order_id == row.id).delete()
+    for line in lines:
+        db.add(POLineItem(purchase_order_id=row.id, **line))
+
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row

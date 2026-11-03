@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Card from "./Card.jsx";
 
-export default function Board({ columns, data, onDrop, highlightId, emptyNew }) {
+export default function Board({ columns, data, onDrop, highlightId, emptyNew, onRefresh }) {
   const [over, setOver] = useState(null);
 
   return (
@@ -36,7 +36,7 @@ export default function Board({ columns, data, onDrop, highlightId, emptyNew }) 
             <div className="stack">
               {cards.length === 0 ? <p className="empty">{emptyText}</p> : null}
               {cards.map((card) => (
-                <Card key={card.id} card={card} highlight={card.id === highlightId} />
+                <Card key={card.id} card={card} highlight={card.id === highlightId} onRefresh={onRefresh} />
               ))}
             </div>
           </section>

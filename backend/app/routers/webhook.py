@@ -1,7 +1,7 @@
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.crud import create_log, upsert_from_webhook
@@ -26,9 +26,45 @@ async def _read_body(request: Request):
         return {"display_name": raw.decode("utf-8", errors="replace")}
 
 
+def _enrich_in_background(po_id: int, odoo_id: int | None) -> None:
+    """
+    Kick off an Odoo JSON-RPC enrichment for a PO in a background thread.
+    Runs synchronously inside FastAPI's thread pool via run_in_threadpool.
+    """
+    if odoo_id is None:
+        return
+    import asyncio
+
+    from app.crud import apply_odoo_enrichment, get_purchase_order
+    from app.database import SessionLocal
+    from app.odoo_client import fetch_order_lines, fetch_purchase_order, parse_line_items, parse_po_enrichment
+
+    async def _run():
+        po_data = await fetch_purchase_order(odoo_id)
+        if not po_data:
+            return
+        enrichment = parse_po_enrichment(po_data)
+        line_ids = po_data.get("order_line") or []
+        lines_raw = await fetch_order_lines(line_ids)
+        lines = parse_line_items(lines_raw)
+
+        db = SessionLocal()
+        try:
+            row = get_purchase_order(db, po_id)
+            if row:
+                apply_odoo_enrichment(db, row, enrichment, lines)
+                publish({"type": "po_enriched", "po_id": po_id})
+                logger.info("Enriched PO %s from Odoo (odoo_id=%s)", po_id, odoo_id)
+        finally:
+            db.close()
+
+    asyncio.run(_run())
+
+
 @router.post("/odoo/po-webhook", response_model=WebhookAck)
 async def po_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     client_ip: str = Depends(verify_client_ip),
 ):
@@ -55,6 +91,8 @@ async def po_webhook(
                 }
             )
             saved.append((row, created, extracted))
+            # Schedule Odoo enrichment as a background task
+            background_tasks.add_task(_enrich_in_background, row.id, row.odoo_id)
 
         row, created, extracted = saved[0]
         result = WebhookAck(

@@ -6,6 +6,19 @@ from pydantic import BaseModel, Field
 KanbanStatus = Literal["new", "in_review", "in_progress", "done"]
 
 
+class POLineItemOut(BaseModel):
+    id: int
+    odoo_line_id: int | None
+    product_name: str | None
+    qty_ordered: float | None
+    qty_received: float | None
+    qty_invoiced: float | None
+    price_unit: float | None
+    package_id: str | None
+
+    model_config = {"from_attributes": True}
+
+
 class PurchaseOrderOut(BaseModel):
     id: int
     odoo_id: int | None
@@ -18,6 +31,15 @@ class PurchaseOrderOut(BaseModel):
     status: str
     created_at: datetime | None
     updated_at: datetime | None
+
+    # Enriched via Odoo JSON-RPC
+    vendor_name: str | None = None
+    po_number: str | None = None
+    confirmation_date: str | None = None
+    delivery_date: str | None = None
+    placement_date: str | None = None
+    odoo_synced_at: datetime | None = None
+    line_items: list[POLineItemOut] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
