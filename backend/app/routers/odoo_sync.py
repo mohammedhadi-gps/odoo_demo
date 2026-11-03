@@ -62,7 +62,7 @@ async def sync_po_from_odoo(row_id: int, db: Session = Depends(get_db)):
 
 @router.post("/odoo/pull")
 async def pull_from_odoo(
-    limit: int = Query(default=50, ge=1, le=200, description="Max number of POs to pull"),
+    limit: int = Query(default=3, ge=1, le=200, description="Max number of POs to pull"),
     db: Session = Depends(get_db),
 ):
     """

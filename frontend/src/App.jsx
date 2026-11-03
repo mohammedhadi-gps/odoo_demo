@@ -88,7 +88,7 @@ export default function App() {
     setPulling(true);
     setError("");
     try {
-      const result = await pullFromOdoo(50);
+      const result = await pullFromOdoo(3);
       setNotice(
         `Pulled from Odoo: ${result.created} new, ${result.updated} updated` +
         (result.failed?.length ? `, ${result.failed.length} failed` : "")
