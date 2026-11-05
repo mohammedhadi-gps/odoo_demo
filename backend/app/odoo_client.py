@@ -52,6 +52,16 @@ GRN_FIELDS = [
     "date_done",        # actual date validated (filled when state=done)
 ]
 
+# Fields fetched from account.move (PRQ / vendor bills)
+PRQ_FIELDS = [
+    "id",
+    "name",               # bill reference e.g. BILL/2024/00012
+    "state",              # draft / posted / cancel
+    "invoice_date",       # bill date
+    "invoice_date_due",   # payment due date
+    "amount_total",       # total amount including tax
+]
+
 
 def _build_payload(model: str, method: str, args: list, kwargs: dict | None = None) -> dict:
     """Build a standard JSON-RPC 2.0 execute_kw payload."""
@@ -184,6 +194,34 @@ async def fetch_grn_for_po(odoo_po_id: int) -> list[dict]:
         return result or []
     except Exception:
         logger.exception("Failed to fetch GRNs for Odoo PO id=%s", odoo_po_id)
+        return []
+
+
+async def fetch_prq_for_po(odoo_po_id: int) -> list[dict]:
+    """
+    Fetch all vendor bills (PRQs / purchase invoices) linked to a purchase.order.
+    Queries account.move filtered by purchase_id and move_type=in_invoice.
+    Returns an empty list if none found or Odoo is not configured.
+    """
+    if not settings.odoo_configured:
+        logger.warning("Odoo connection not configured — skipping PRQ fetch for PO %s", odoo_po_id)
+        return []
+
+    payload = _build_payload(
+        model="account.move",
+        method="search_read",
+        args=[[
+            ["purchase_id", "=", odoo_po_id],
+            ["move_type", "=", "in_invoice"],
+        ]],
+        kwargs={"fields": PRQ_FIELDS},
+    )
+    try:
+        result = await _post(payload)
+        logger.info("Fetched %d PRQ(s) for Odoo PO id=%s", len(result or []), odoo_po_id)
+        return result or []
+    except Exception:
+        logger.exception("Failed to fetch PRQs for Odoo PO id=%s", odoo_po_id)
         return []
 
 
