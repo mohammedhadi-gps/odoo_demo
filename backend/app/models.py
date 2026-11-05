@@ -39,6 +39,9 @@ class PurchaseOrder(Base):
     line_items: Mapped[list["POLineItem"]] = relationship(
         "POLineItem", back_populates="purchase_order", cascade="all, delete-orphan"
     )
+    grn_receipts: Mapped[list["GRNReceipt"]] = relationship(
+        "GRNReceipt", back_populates="purchase_order", cascade="all, delete-orphan"
+    )
 
 
 class POLineItem(Base):
@@ -55,6 +58,20 @@ class POLineItem(Base):
     package_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     purchase_order: Mapped["PurchaseOrder"] = relationship("PurchaseOrder", back_populates="line_items")
+
+
+class GRNReceipt(Base):
+    __tablename__ = "grn_receipts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    purchase_order_id: Mapped[int] = mapped_column(Integer, ForeignKey("purchase_orders.id"), index=True)
+    odoo_picking_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)   # e.g. WH/IN/00012
+    state: Mapped[str | None] = mapped_column(String(50), nullable=True)   # draft/confirmed/done/cancel
+    scheduled_date: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    date_done: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    purchase_order: Mapped["PurchaseOrder"] = relationship("PurchaseOrder", back_populates="grn_receipts")
 
 
 class WebhookLog(Base):

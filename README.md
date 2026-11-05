@@ -1,89 +1,256 @@
-# Odoo PO Kanban
+# Odoo PO Kanban — API Documentation
 
-Receives purchase orders from Odoo via webhook and shows them on a kanban board.
+A kanban board that tracks Odoo Purchase Orders across four stages.
+Backend: FastAPI + PostgreSQL (Supabase). Frontend: React + Vite. Hosted on Vercel.
 
-Webhook fields stored on each card:
+---
 
-- `display_name`
-- `package_id`
-- `partner_id`
-- `project_id`
-- `subject`
-- `category`
+## Architecture
 
-## Run locally
-
-Backend:
-
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+Odoo ──webhook──► Backend API ──SSE──► Frontend (Kanban board)
+  ▲                   │
+  └──── JSON-RPC ─────┘
 ```
 
-Frontend:
+- **Webhook (Odoo → App):** Odoo pushes a notification when a PO is confirmed.
+- **JSON-RPC (App → Odoo):** App calls Odoo to fetch full PO data, line items, and GRNs.
+- **SSE (App → Browser):** Backend streams live events to the frontend so cards appear instantly.
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+---
 
-Open http://localhost:5173
+## Environment Variables
 
-The board polls `/api/v1/po/board` every 5 seconds. Drag a card to change status.
+Set these in Vercel (Settings → Environment Variables):
 
-## Odoo webhook (production-style setup)
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | Supabase PostgreSQL connection string (Transaction Pooler URL) |
+| `ODOO_URL` | Odoo JSON-RPC endpoint — `https://your-odoo.com/jsonrpc` |
+| `ODOO_DB` | Odoo database name |
+| `ODOO_USER_ID` | Numeric Odoo user ID (found in the URL when viewing a user in Odoo) |
+| `ODOO_API_KEY` | API key from Odoo user preferences |
+| `CORS_ORIGINS` | Comma-separated allowed origins (e.g. your Vercel frontend URL) |
+| `WEBHOOK_ALLOWED_IPS` | Optional comma-separated IP allowlist for the webhook endpoint |
 
-1. Go to **Settings → Technical → Server Actions**
-2. Click **New**
-3. Fill in:
-   - **Name:** Purchase Order Status locked update
-   - **Action Type:** Send Webhook Notification
-   - **Model:** `purchase.order`
-   - **Webhook URL:** `https://YOUR-HOST/api/v1/odoo/po-webhook`
-   - **Fields to Send:** `display_name`, `package_id`, `partner_id`, `project_id`, `subject`, `category`
-4. Save
+---
 
-For local testing, use a tunnel (ngrok, Cloudflare Tunnel, etc.) pointing at `http://localhost:8000`.
+## Kanban Columns
 
-Optional IP allow-list: set `WEBHOOK_ALLOWED_IPS` in `backend/.env`.
+| Column | Status value | Purpose |
+|---|---|---|
+| New | `new` | PO just arrived via webhook or pull |
+| In review | `in_review` | Vendor and package being checked |
+| In progress (GRN) | `in_progress` | GRN fetch available here |
+| Done | `done` | Fully processed |
 
-## API
+---
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| POST | `/api/v1/odoo/po-webhook` | Odoo PO webhook |
-| GET | `/api/v1/po/board` | Kanban columns |
-| GET | `/api/v1/po/pending` | POs in `new` |
-| GET | `/api/v1/po` | All POs |
-| PATCH | `/api/v1/po/{id}/status` | Move a card |
-| POST | `/api/v1/po/pending/{id}/process` | Mark in progress with `wp_ids` |
+## REST API Endpoints
 
-Example payload Odoo may send (many2one fields often arrive as `[id, name]`):
+All endpoints are prefixed with `/api/v1`.
 
+---
+
+### Kanban Board
+
+#### `GET /po/board`
+Returns all POs grouped by kanban column.
+
+**Query params:** `project_id` (optional filter)
+
+**Response:**
 ```json
 {
-  "_id": 1842,
-  "_model": "purchase.order",
-  "display_name": "PO/2026/00412",
-  "package_id": [8, "PKG-CIVIL-02"],
-  "partner_id": [55, "Acme Vendors"],
-  "project_id": [3, "Site Alpha"],
-  "subject": "Foundation bolts",
-  "category": "Civil"
+  "columns": {
+    "new": [ { ...PurchaseOrderOut } ],
+    "in_review": [],
+    "in_progress": [],
+    "done": []
+  }
 }
 ```
 
-Local test:
+---
 
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/odoo/po-webhook \
-  -H "Content-Type: application/json" \
-  -d '{"_id":1,"display_name":"PO/TEST","package_id":[1,"PKG-1"],"partner_id":[2,"Vendor"],"project_id":[3,"Project A"],"subject":"Cables","category":"Electrical"}'
+#### `GET /po`
+Returns a flat list of all POs.
+
+**Query params:** `project_id`, `status` (both optional)
+
+---
+
+#### `GET /po/pending`
+Returns only POs with status `new`.
+
+---
+
+#### `PATCH /po/{id}/status`
+Move a PO to a different kanban column.
+
+**Body:**
+```json
+{ "status": "in_review" }
+```
+Valid values: `new`, `in_review`, `in_progress`, `done`
+
+---
+
+#### `DELETE /po/{id}`
+Permanently delete a PO and all its line items and GRN records from the local database.
+Does not affect Odoo. Returns `204 No Content`.
+
+---
+
+### Webhook (Odoo → App)
+
+#### `POST /odoo/po-webhook`
+Receives a PO payload from Odoo when a purchase order is confirmed/locked.
+
+**What it does:**
+1. Parses the payload (handles single records, arrays, nested envelopes)
+2. Upserts the PO into the local database (create or update by `odoo_id`)
+3. Publishes an SSE event so the card appears on the board immediately
+4. Fires a background JSON-RPC call back to Odoo to fetch full enrichment + line items
+
+**Response:**
+```json
+{
+  "accepted": true,
+  "po_id": 42,
+  "created": true,
+  "message": "PO created on kanban",
+  "extracted": { "odoo_id": 123, "display_name": "PO/00042", ... }
+}
 ```
 
-Kanban columns: `new` → `in_review` → `in_progress` → `done`.
+**Configure in Odoo:** Settings → Technical → Automation → Webhooks
+Set the URL to `https://your-app.vercel.app/api/v1/odoo/po-webhook`
+
+---
+
+### Odoo Sync (App → Odoo via JSON-RPC)
+
+#### `POST /odoo/pull?limit=3`
+Manually pull the latest confirmed POs from Odoo into the kanban.
+
+**What it does:**
+- Calls `purchase.order` `search_read` filtered by `state in [purchase, done]`
+- Orders by `date_approve desc` (most recent first)
+- Upserts each PO and fetches full enrichment + line items
+- Default limit: 3. Max: 200.
+
+**Response:**
+```json
+{ "status": "ok", "created": 2, "updated": 1, "failed": [], "total": 3 }
+```
+
+---
+
+#### `POST /po/{id}/sync`
+Manually re-sync a single PO from Odoo. Fetches updated fields and line items.
+
+Requires the PO to have an `odoo_id` (set when created via webhook or pull).
+
+**Response:** Full `PurchaseOrderOut` with updated enrichment and line items.
+
+---
+
+#### `POST /po/{id}/fetch-grn`
+Fetch GRN (Goods Receipt Notes) from Odoo for a PO.
+
+Only available when the PO is in `in_progress` status.
+Queries `stock.picking` filtered by `purchase_id` and `picking_type_code=incoming`.
+Replaces any previously stored GRN records for this PO.
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "odoo_picking_id": 55,
+    "name": "WH/IN/00012",
+    "state": "done",
+    "scheduled_date": "2026-10-01",
+    "date_done": "2026-10-03"
+  }
+]
+```
+
+---
+
+### Live Events (SSE)
+
+#### `GET /po/events`
+Server-Sent Events stream. The frontend subscribes to this to receive real-time updates.
+
+**Event types:**
+
+| type | Fired when |
+|---|---|
+| `po` | A PO is created or updated (via webhook or pull) |
+| `po_enriched` | Background JSON-RPC enrichment completed for a PO |
+| `po_grn_fetched` | GRN records fetched and stored for a PO |
+
+---
+
+### Health
+
+#### `GET /health`
+Returns `{ "status": "ok" }`. Used to verify the backend is running.
+
+---
+
+## Odoo JSON-RPC Calls (Internal)
+
+These are made by the backend to Odoo. Not public endpoints.
+
+| Function | Odoo Model | Purpose |
+|---|---|---|
+| `fetch_latest_purchase_orders` | `purchase.order` | Pull N most recent confirmed POs |
+| `fetch_purchase_order` | `purchase.order` | Fetch one PO by its Odoo ID |
+| `fetch_order_lines` | `purchase.order.line` | Fetch line items for a PO |
+| `fetch_grn_for_po` | `stock.picking` | Fetch GRN receipts linked to a PO |
+
+### Fields fetched per model
+
+**`purchase.order`**
+`id`, `name`, `partner_ref`, `first_confirmation_date`, `delivery_date`,
+`package_number`, `date_approve`, `partner_id`, `project_id`, `package_id`, `order_line`
+
+**`purchase.order.line`**
+`id`, `product_id`, `product_qty`, `qty_received`, `qty_invoiced`, `price_unit`, `package_id`
+
+> `qty_received` and `qty_invoiced` are Odoo computed fields.
+> They show `0.0` until a stock receipt (GRN) or vendor bill is validated in Odoo.
+
+**`stock.picking`** (GRN)
+`id`, `name`, `state`, `scheduled_date`, `date_done`
+
+---
+
+## Database Tables
+
+| Table | Purpose |
+|---|---|
+| `purchase_orders` | Core PO data + enriched fields from Odoo |
+| `po_line_items` | Product lines per PO (from `purchase.order.line`) |
+| `grn_receipts` | GRN receipts per PO (from `stock.picking`) |
+| `webhook_logs` | Raw log of every webhook received |
+
+Tables are created automatically on first startup via SQLAlchemy `create_all`.
+
+---
+
+## Frontend API calls (`frontend/src/api.js`)
+
+| Function | Method | Endpoint | Purpose |
+|---|---|---|---|
+| `fetchBoard(projectId)` | GET | `/po/board` | Load all columns |
+| `movePo(id, status)` | PATCH | `/po/{id}/status` | Drag card to new column |
+| `deletePo(id)` | DELETE | `/po/{id}` | Remove card from board |
+| `syncPo(id)` | POST | `/po/{id}/sync` | Re-sync one PO from Odoo |
+| `pullFromOdoo(limit)` | POST | `/odoo/pull` | Pull latest 3 POs from Odoo |
+| `fetchGrn(id)` | POST | `/po/{id}/fetch-grn` | Fetch GRN for in-progress PO |
+| `sendTestWebhook(payload)` | POST | `/odoo/po-webhook` | Simulate an Odoo webhook |
+| `subscribeBoard(onEvent)` | SSE | `/po/events` | Subscribe to live updates |

@@ -21,15 +21,15 @@ logger = logging.getLogger(__name__)
 PO_FIELDS = [
     "id",
     "name",
-    "partner_ref",           # Vendor Name
-    "first_confirmation_date",  # Confirmation Date (custom)
-    "delivery_date",         # Contractual Delivery Date (custom)
-    "package_number",        # PO Number (custom)
-    "date_approve",          # PO Placement Date
+    "partner_ref",              # Vendor Name (vendor's own reference)
+    "first_confirmation_date",  # Confirmation Date (custom field)
+    "delivery_date",            # Contractual Delivery Date (custom field)
+    "package_number",           # PO Number (custom field)
+    "date_approve",             # PO Placement Date (standard)
     "partner_id",
     "project_id",
     "package_id",
-    "order_line",
+    "order_line",               # list of purchase.order.line IDs
 ]
 
 # Fields fetched from purchase.order.line
@@ -43,9 +43,18 @@ LINE_FIELDS = [
     "package_id",
 ]
 
+# Fields fetched from stock.picking (GRN receipts)
+GRN_FIELDS = [
+    "id",
+    "name",             # receipt reference e.g. WH/IN/00012
+    "state",            # draft / confirmed / done / cancel
+    "scheduled_date",   # expected receipt date
+    "date_done",        # actual date validated (filled when state=done)
+]
+
 
 def _build_payload(model: str, method: str, args: list, kwargs: dict | None = None) -> dict:
-    """Build a JSON-RPC 2.0 execute_kw payload."""
+    """Build a standard JSON-RPC 2.0 execute_kw payload."""
     return {
         "jsonrpc": "2.0",
         "method": "call",
@@ -80,11 +89,11 @@ async def _post(payload: dict) -> Any:
     return data.get("result")
 
 
-async def fetch_latest_purchase_orders(limit: int = 50) -> list[dict]:
+async def fetch_latest_purchase_orders(limit: int = 3) -> list[dict]:
     """
     Fetch the most recent confirmed purchase orders from Odoo.
-    Orders by date_approve descending (most recently approved first).
-    Only returns POs in state 'purchase' or 'done' (i.e. confirmed, not drafts).
+    Filters: state in [purchase, done] (confirmed only, no drafts).
+    Ordered by date_approve descending (most recent first).
     """
     if not settings.odoo_configured:
         logger.warning("Odoo connection not configured — skipping bulk PO fetch")
@@ -94,11 +103,7 @@ async def fetch_latest_purchase_orders(limit: int = 50) -> list[dict]:
         model="purchase.order",
         method="search_read",
         args=[[["state", "in", ["purchase", "done"]]]],
-        kwargs={
-            "fields": PO_FIELDS,
-            "limit": limit,
-            "order": "date_approve desc",
-        },
+        kwargs={"fields": PO_FIELDS, "limit": limit, "order": "date_approve desc"},
     )
     try:
         result = await _post(payload)
@@ -111,8 +116,8 @@ async def fetch_latest_purchase_orders(limit: int = 50) -> list[dict]:
 
 async def fetch_purchase_order(odoo_id: int) -> dict | None:
     """
-    Fetch a single purchase.order by its Odoo ID.
-    Returns the first matching record dict, or None.
+    Fetch a single purchase.order by its Odoo numeric ID.
+    Returns the record dict or None if not found / Odoo unreachable.
     """
     if not settings.odoo_configured:
         logger.warning("Odoo connection not configured — skipping fetch for PO %s", odoo_id)
@@ -126,10 +131,7 @@ async def fetch_purchase_order(odoo_id: int) -> dict | None:
     )
     try:
         result = await _post(payload)
-        if result:
-            return result[0]
-        logger.warning("Odoo returned no PO for id=%s", odoo_id)
-        return None
+        return result[0] if result else None
     except Exception:
         logger.exception("Failed to fetch PO %s from Odoo", odoo_id)
         return None
@@ -138,16 +140,9 @@ async def fetch_purchase_order(odoo_id: int) -> dict | None:
 async def fetch_order_lines(line_ids: list[int]) -> list[dict]:
     """
     Fetch purchase.order.line records by their IDs.
-    Returns an empty list when nothing is found or Odoo is not configured.
-
-    Note: qty_received and qty_invoiced are computed fields populated only
-    after a stock receipt (GRN) or vendor bill (PRQ) is validated in Odoo.
-    Before that they will be 0.0.
+    qty_received and qty_invoiced are 0.0 until a GRN or vendor bill is validated.
     """
-    if not settings.odoo_configured:
-        logger.warning("Odoo connection not configured — skipping order line fetch")
-        return []
-    if not line_ids:
+    if not settings.odoo_configured or not line_ids:
         return []
 
     payload = _build_payload(
@@ -163,6 +158,36 @@ async def fetch_order_lines(line_ids: list[int]) -> list[dict]:
         logger.exception("Failed to fetch order lines %s from Odoo", line_ids)
         return []
 
+
+async def fetch_grn_for_po(odoo_po_id: int) -> list[dict]:
+    """
+    Fetch all incoming stock receipts (GRNs) for a purchase.order.
+    Queries stock.picking filtered by purchase_id and picking_type_code=incoming.
+    Returns an empty list if none found or Odoo is not configured.
+    """
+    if not settings.odoo_configured:
+        logger.warning("Odoo connection not configured — skipping GRN fetch for PO %s", odoo_po_id)
+        return []
+
+    payload = _build_payload(
+        model="stock.picking",
+        method="search_read",
+        args=[[
+            ["purchase_id", "=", odoo_po_id],
+            ["picking_type_code", "=", "incoming"],
+        ]],
+        kwargs={"fields": GRN_FIELDS},
+    )
+    try:
+        result = await _post(payload)
+        logger.info("Fetched %d GRN(s) for Odoo PO id=%s", len(result or []), odoo_po_id)
+        return result or []
+    except Exception:
+        logger.exception("Failed to fetch GRNs for Odoo PO id=%s", odoo_po_id)
+        return []
+
+
+# ── Parsers ──────────────────────────────────────────────────────────────────
 
 def _as_text(value: Any) -> str | None:
     """Coerce an Odoo many2one tuple [id, name] or plain value to a string."""
@@ -185,10 +210,7 @@ def _as_float(value: Any) -> float | None:
 
 
 def parse_po_enrichment(po: dict) -> dict:
-    """
-    Extract the enrichment fields we care about from a raw Odoo PO dict.
-    Returns a flat dict ready to be applied to a PurchaseOrder row.
-    """
+    """Extract enrichment fields from a raw Odoo PO dict for storage."""
     return {
         "vendor_name": _as_text(po.get("partner_ref")) or _as_text(po.get("partner_id")),
         "po_number": _as_text(po.get("package_number")) or _as_text(po.get("name")),
@@ -199,18 +221,13 @@ def parse_po_enrichment(po: dict) -> dict:
 
 
 def parse_line_items(lines: list[dict]) -> list[dict]:
-    """
-    Convert raw Odoo order line dicts to the shape expected by POLineItem.
-    """
-    result = []
-    for line in lines:
-        result.append({
-            "odoo_line_id": line.get("id"),
-            "product_name": _as_text(line.get("product_id")),
-            "qty_ordered": _as_float(line.get("product_qty")),
-            "qty_received": _as_float(line.get("qty_received")),
-            "qty_invoiced": _as_float(line.get("qty_invoiced")),
-            "price_unit": _as_float(line.get("price_unit")),
-            "package_id": _as_text(line.get("package_id")),
-        })
-    return result
+    """Convert raw Odoo order line dicts to POLineItem shape."""
+    return [{
+        "odoo_line_id": line.get("id"),
+        "product_name": _as_text(line.get("product_id")),
+        "qty_ordered": _as_float(line.get("product_qty")),
+        "qty_received": _as_float(line.get("qty_received")),
+        "qty_invoiced": _as_float(line.get("qty_invoiced")),
+        "price_unit": _as_float(line.get("price_unit")),
+        "package_id": _as_text(line.get("package_id")),
+    } for line in lines]

@@ -65,3 +65,8 @@ export async function deletePo(id) {
     throw new Error(detail.detail || "Delete failed");
   }
 }
+
+/** Fetch GRN receipts from Odoo for a PO in 'in_progress' status. */
+export function fetchGrn(id) {
+  return request(`/po/${id}/fetch-grn`, { method: "POST" });
+}

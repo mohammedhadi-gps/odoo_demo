@@ -6,6 +6,17 @@ from pydantic import BaseModel, Field
 KanbanStatus = Literal["new", "in_review", "in_progress", "done"]
 
 
+class GRNReceiptOut(BaseModel):
+    id: int
+    odoo_picking_id: int | None
+    name: str | None
+    state: str | None
+    scheduled_date: str | None
+    date_done: str | None
+
+    model_config = {"from_attributes": True}
+
+
 class POLineItemOut(BaseModel):
     id: int
     odoo_line_id: int | None
@@ -40,6 +51,7 @@ class PurchaseOrderOut(BaseModel):
     placement_date: str | None = None
     odoo_synced_at: datetime | None = None
     line_items: list[POLineItemOut] = Field(default_factory=list)
+    grn_receipts: list[GRNReceiptOut] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

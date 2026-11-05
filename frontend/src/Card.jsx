@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { deletePo, syncPo } from "./api";
+import { deletePo, fetchGrn, syncPo } from "./api";
 
 function fmt(val) {
   return val || "—";
@@ -37,14 +37,52 @@ function LineItemsTable({ items }) {
   );
 }
 
+function GRNTable({ items }) {
+  if (!items || items.length === 0) {
+    return <p className="lines-empty">No GRN receipts fetched yet.</p>;
+  }
+  return (
+    <div className="lines-wrap">
+      <table className="lines-table">
+        <thead>
+          <tr>
+            <th>Receipt</th>
+            <th>State</th>
+            <th>Scheduled</th>
+            <th>Done</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((grn) => (
+            <tr key={grn.id}>
+              <td>{fmt(grn.name)}</td>
+              <td>
+                <span className={`grn-state grn-state--${grn.state || "unknown"}`}>
+                  {fmt(grn.state)}
+                </span>
+              </td>
+              <td>{fmt(grn.scheduled_date)}</td>
+              <td>{fmt(grn.date_done)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function Card({ card, highlight, onRefresh }) {
   const [expanded, setExpanded] = useState(false);
+  const [grnExpanded, setGrnExpanded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [fetchingGrn, setFetchingGrn] = useState(false);
+  const [grnError, setGrnError] = useState("");
 
   const isSynced = Boolean(card.odoo_synced_at);
+  const isInProgress = card.status === "in_progress";
 
   async function handleSync(e) {
     e.stopPropagation();
@@ -74,6 +112,21 @@ export default function Card({ card, highlight, onRefresh }) {
       setSyncError(err.message);
       setDeleting(false);
       setConfirmDelete(false);
+    }
+  }
+
+  async function handleFetchGrn(e) {
+    e.stopPropagation();
+    setFetchingGrn(true);
+    setGrnError("");
+    try {
+      await fetchGrn(card.id);
+      if (onRefresh) onRefresh();
+      setGrnExpanded(true);
+    } catch (err) {
+      setGrnError(err.message);
+    } finally {
+      setFetchingGrn(false);
     }
   }
 
@@ -144,6 +197,36 @@ export default function Card({ card, highlight, onRefresh }) {
         </button>
       )}
       {expanded && <LineItemsTable items={card.line_items} />}
+
+      {/* ── GRN section — only visible in In progress (GRN) column ── */}
+      {isInProgress && (
+        <div className="grn-section">
+          <div className="grn-header">
+            <span className="grn-label">GRN Receipts</span>
+            <button
+              type="button"
+              className="grn-fetch-btn"
+              onClick={handleFetchGrn}
+              disabled={fetchingGrn || !card.odoo_id}
+              title={!card.odoo_id ? "No Odoo ID — cannot fetch GRN" : "Fetch GRN from Odoo"}
+            >
+              {fetchingGrn ? "Fetching…" : card.grn_receipts?.length ? "Re-fetch GRN" : "Fetch GRN"}
+            </button>
+          </div>
+          {grnError && <span className="sync-error">{grnError}</span>}
+          {card.grn_receipts?.length > 0 && (
+            <button
+              type="button"
+              className="lines-toggle"
+              onClick={() => setGrnExpanded((v) => !v)}
+            >
+              {grnExpanded ? "▲ Hide GRN" : "▼ Show GRN"}
+              {` (${card.grn_receipts.length})`}
+            </button>
+          )}
+          {grnExpanded && <GRNTable items={card.grn_receipts} />}
+        </div>
+      )}
 
       {/* ── Sync button ── */}
       {card.odoo_id && (

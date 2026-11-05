@@ -398,3 +398,68 @@ dd {
   border-color: var(--text);
   color: var(--text);
 }
+
+/* ── GRN section ── */
+.grn-section {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.grn-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.grn-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warn);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.grn-fetch-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--warn);
+  background: transparent;
+  color: var(--warn);
+  cursor: pointer;
+}
+
+.grn-fetch-btn:hover:not(:disabled) {
+  background: rgba(243, 181, 98, 0.1);
+}
+
+.grn-fetch-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.grn-state {
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: var(--panel);
+  color: var(--muted);
+}
+
+.grn-state--done {
+  background: rgba(123, 211, 137, 0.15);
+  color: var(--accent);
+}
+
+.grn-state--cancel {
+  background: rgba(239, 123, 123, 0.15);
+  color: var(--danger);
+}
+
+.grn-state--confirmed,
+.grn-state--assigned {
+  background: rgba(243, 181, 98, 0.15);
+  color: var(--warn);
+}

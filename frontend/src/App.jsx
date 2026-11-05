@@ -5,7 +5,7 @@ import Board from "./Board.jsx";
 const COLUMNS = [
   { id: "new", title: "New", hint: "Placed in Odoo" },
   { id: "in_review", title: "In review", hint: "Check vendor & package" },
-  { id: "in_progress", title: "In progress", hint: "Assigned / mapping" },
+  { id: "in_progress", title: "In progress (GRN)", hint: "Assigned / mapping" },
   { id: "done", title: "Done", hint: "Processed" },
 ];
 
