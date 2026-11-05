@@ -70,3 +70,8 @@ export async function deletePo(id) {
 export function fetchGrn(id) {
   return request(`/po/${id}/fetch-grn`, { method: "POST" });
 }
+
+/** Fetch PRQ vendor bills from Odoo for a PO in 'done' status. */
+export function fetchPrq(id) {
+  return request(`/po/${id}/fetch-prq`, { method: "POST" });
+}

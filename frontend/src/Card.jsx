@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { deletePo, fetchGrn, syncPo } from "./api";
+import { deletePo, fetchGrn, fetchPrq, syncPo } from "./api";
 
 function fmt(val) {
   return val || "—";
@@ -71,6 +71,44 @@ function GRNTable({ items }) {
   );
 }
 
+function PRQTable({ items }) {
+  if (!items || items.length === 0) {
+    return <p className="lines-empty">No vendor bills fetched yet.</p>;
+  }
+  return (
+    <div className="lines-wrap">
+      <table className="lines-table">
+        <thead>
+          <tr>
+            <th>Bill ref</th>
+            <th>State</th>
+            <th>Bill date</th>
+            <th>Due date</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((prq) => (
+            <tr key={prq.id}>
+              <td>{fmt(prq.name)}</td>
+              <td>
+                <span className={`grn-state grn-state--${prq.state || "unknown"}`}>
+                  {fmt(prq.state)}
+                </span>
+              </td>
+              <td>{fmt(prq.invoice_date)}</td>
+              <td>{fmt(prq.invoice_date_due)}</td>
+              <td className="num">
+                {prq.amount_total != null ? prq.amount_total.toFixed(2) : "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function Card({ card, highlight, onRefresh }) {
   const [expanded, setExpanded] = useState(false);
   const [grnExpanded, setGrnExpanded] = useState(false);
@@ -80,9 +118,13 @@ export default function Card({ card, highlight, onRefresh }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [fetchingGrn, setFetchingGrn] = useState(false);
   const [grnError, setGrnError] = useState("");
+  const [fetchingPrq, setFetchingPrq] = useState(false);
+  const [prqExpanded, setPrqExpanded] = useState(false);
+  const [prqError, setPrqError] = useState("");
 
   const isSynced = Boolean(card.odoo_synced_at);
   const isInProgress = card.status === "in_progress";
+  const isDone = card.status === "done";
 
   async function handleSync(e) {
     e.stopPropagation();
@@ -127,6 +169,21 @@ export default function Card({ card, highlight, onRefresh }) {
       setGrnError(err.message);
     } finally {
       setFetchingGrn(false);
+    }
+  }
+
+  async function handleFetchPrq(e) {
+    e.stopPropagation();
+    setFetchingPrq(true);
+    setPrqError("");
+    try {
+      await fetchPrq(card.id);
+      if (onRefresh) onRefresh();
+      setPrqExpanded(true);
+    } catch (err) {
+      setPrqError(err.message);
+    } finally {
+      setFetchingPrq(false);
     }
   }
 
@@ -225,6 +282,36 @@ export default function Card({ card, highlight, onRefresh }) {
             </button>
           )}
           {grnExpanded && <GRNTable items={card.grn_receipts} />}
+        </div>
+      )}
+
+      {/* ── PRQ section — only visible in Done column ── */}
+      {isDone && (
+        <div className="grn-section">
+          <div className="grn-header">
+            <span className="grn-label">Vendor Bills (PRQ)</span>
+            <button
+              type="button"
+              className="grn-fetch-btn"
+              onClick={handleFetchPrq}
+              disabled={fetchingPrq || !card.odoo_id}
+              title={!card.odoo_id ? "No Odoo ID — cannot fetch PRQ" : "Fetch vendor bills from Odoo"}
+            >
+              {fetchingPrq ? "Fetching…" : card.prq_receipts?.length ? "Re-fetch PRQ" : "Fetch PRQ"}
+            </button>
+          </div>
+          {prqError && <span className="sync-error">{prqError}</span>}
+          {card.prq_receipts?.length > 0 && (
+            <button
+              type="button"
+              className="lines-toggle"
+              onClick={() => setPrqExpanded((v) => !v)}
+            >
+              {prqExpanded ? "▲ Hide PRQ" : "▼ Show PRQ"}
+              {` (${card.prq_receipts.length})`}
+            </button>
+          )}
+          {prqExpanded && <PRQTable items={card.prq_receipts} />}
         </div>
       )}
 
