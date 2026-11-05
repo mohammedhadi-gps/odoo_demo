@@ -80,10 +80,10 @@ function PRQTable({ items }) {
       <table className="lines-table">
         <thead>
           <tr>
-            <th>Bill Ref</th>
+            <th>Bill ref</th>
             <th>State</th>
-            <th>Bill Date</th>
-            <th>Due Date</th>
+            <th>Bill date</th>
+            <th>Due date</th>
             <th>Total</th>
           </tr>
         </thead>
