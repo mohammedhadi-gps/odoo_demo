@@ -42,6 +42,9 @@ class PurchaseOrder(Base):
     grn_receipts: Mapped[list["GRNReceipt"]] = relationship(
         "GRNReceipt", back_populates="purchase_order", cascade="all, delete-orphan"
     )
+    prq_receipts: Mapped[list["PRQReceipt"]] = relationship(
+        "PRQReceipt", back_populates="purchase_order", cascade="all, delete-orphan"
+    )
 
 
 class POLineItem(Base):
@@ -72,6 +75,21 @@ class GRNReceipt(Base):
     date_done: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     purchase_order: Mapped["PurchaseOrder"] = relationship("PurchaseOrder", back_populates="grn_receipts")
+
+
+class PRQReceipt(Base):
+    __tablename__ = "prq_receipts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    purchase_order_id: Mapped[int] = mapped_column(Integer, ForeignKey("purchase_orders.id"), index=True)
+    odoo_invoice_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)    # e.g. BILL/2024/00012
+    state: Mapped[str | None] = mapped_column(String(50), nullable=True)    # draft / posted / cancel
+    invoice_date: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    invoice_date_due: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    amount_total: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    purchase_order: Mapped["PurchaseOrder"] = relationship("PurchaseOrder", back_populates="prq_receipts")
 
 
 class WebhookLog(Base):

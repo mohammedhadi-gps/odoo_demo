@@ -13,16 +13,17 @@ from sqlalchemy.orm import Session
 from app.crud import apply_odoo_enrichment, get_purchase_order, upsert_from_webhook
 from app.database import get_db
 from app.events import publish
-from app.models import GRNReceipt
+from app.models import GRNReceipt, PRQReceipt
 from app.odoo_client import (
     fetch_grn_for_po,
     fetch_latest_purchase_orders,
     fetch_order_lines,
+    fetch_prq_for_po,
     fetch_purchase_order,
     parse_line_items,
     parse_po_enrichment,
 )
-from app.schemas import GRNReceiptOut, PurchaseOrderOut
+from app.schemas import GRNReceiptOut, PRQReceiptOut, PurchaseOrderOut
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -185,3 +186,57 @@ async def fetch_grn(row_id: int, db: Session = Depends(get_db)):
     publish({"type": "po_grn_fetched", "po_id": row_id, "grn_count": len(receipts)})
     logger.info("Fetched %d GRN(s) for PO id=%s (odoo_id=%s)", len(receipts), row_id, row.odoo_id)
     return [GRNReceiptOut.model_validate(r) for r in receipts]
+
+
+@router.post("/po/{row_id}/fetch-prq", response_model=list[PRQReceiptOut])
+async def fetch_prq(row_id: int, db: Session = Depends(get_db)):
+    """
+    Fetch vendor bills (PRQs / purchase invoices) from Odoo for a PO that is
+    in 'done' status. Replaces any previously stored PRQ records for this PO.
+    Only works for POs that have an odoo_id.
+    """
+    row = get_purchase_order(db, row_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="PO not found")
+    if row.status != "done":
+        raise HTTPException(
+            status_code=422,
+            detail="PRQ fetch is only available for POs in 'Done' status.",
+        )
+    if not row.odoo_id:
+        raise HTTPException(
+            status_code=422,
+            detail="This PO has no Odoo ID — cannot fetch PRQ.",
+        )
+
+    prq_data = await fetch_prq_for_po(row.odoo_id)
+    if not prq_data:
+        raise HTTPException(
+            status_code=502,
+            detail=f"No vendor bills found in Odoo for PO {row.odoo_id}. "
+                   "They appear after a vendor bill is created and linked to the PO in Odoo.",
+        )
+
+    # Replace existing PRQ records for this PO
+    db.query(PRQReceipt).filter(PRQReceipt.purchase_order_id == row.id).delete()
+    bills = []
+    for p in prq_data:
+        bill = PRQReceipt(
+            purchase_order_id=row.id,
+            odoo_invoice_id=p.get("id"),
+            name=p.get("name") if p.get("name") not in (False, None) else None,
+            state=p.get("state") if p.get("state") not in (False, None) else None,
+            invoice_date=str(p.get("invoice_date")) if p.get("invoice_date") not in (False, None) else None,
+            invoice_date_due=str(p.get("invoice_date_due")) if p.get("invoice_date_due") not in (False, None) else None,
+            amount_total=float(p["amount_total"]) if p.get("amount_total") not in (False, None) else None,
+        )
+        db.add(bill)
+        bills.append(bill)
+
+    db.commit()
+    for b in bills:
+        db.refresh(b)
+
+    publish({"type": "po_prq_fetched", "po_id": row_id, "prq_count": len(bills)})
+    logger.info("Fetched %d PRQ(s) for PO id=%s (odoo_id=%s)", len(bills), row_id, row.odoo_id)
+    return [PRQReceiptOut.model_validate(b) for b in bills]

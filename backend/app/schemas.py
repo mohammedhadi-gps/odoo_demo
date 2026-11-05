@@ -17,6 +17,18 @@ class GRNReceiptOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PRQReceiptOut(BaseModel):
+    id: int
+    odoo_invoice_id: int | None
+    name: str | None
+    state: str | None
+    invoice_date: str | None
+    invoice_date_due: str | None
+    amount_total: float | None
+
+    model_config = {"from_attributes": True}
+
+
 class POLineItemOut(BaseModel):
     id: int
     odoo_line_id: int | None
@@ -52,6 +64,7 @@ class PurchaseOrderOut(BaseModel):
     odoo_synced_at: datetime | None = None
     line_items: list[POLineItemOut] = Field(default_factory=list)
     grn_receipts: list[GRNReceiptOut] = Field(default_factory=list)
+    prq_receipts: list[PRQReceiptOut] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
