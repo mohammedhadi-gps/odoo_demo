@@ -30,6 +30,7 @@ PO_FIELDS = [
     "project_id",
     "package_id",
     "order_line",               # list of purchase.order.line IDs
+    "invoice_ids",              # list of account.move IDs (vendor bills / PRQs)
 ]
 
 # Fields fetched from purchase.order.line
@@ -197,31 +198,38 @@ async def fetch_grn_for_po(odoo_po_id: int) -> list[dict]:
         return []
 
 
-async def fetch_prq_for_po(odoo_po_id: int) -> list[dict]:
+async def fetch_prq_for_po(invoice_ids: list[int]) -> list[dict]:
     """
-    Fetch all vendor bills (PRQs / purchase invoices) linked to a purchase.order.
-    Queries account.move filtered by purchase_id and move_type=in_invoice.
-    Returns an empty list if none found or Odoo is not configured.
+    Fetch vendor bills (PRQs) for a purchase.order using the invoice_ids
+    already present on the PO record — no broad domain search needed.
+
+    Call pattern:
+        po_data = await fetch_purchase_order(odoo_id)
+        invoice_ids = po_data.get("invoice_ids") or []
+        bills = await fetch_prq_for_po(invoice_ids)
+
+    Uses execute_kw / read (not search_read) so only those exact records
+    are returned regardless of how many bills exist in the database.
     """
     if not settings.odoo_configured:
-        logger.warning("Odoo connection not configured — skipping PRQ fetch for PO %s", odoo_po_id)
+        logger.warning("Odoo connection not configured — skipping PRQ fetch")
+        return []
+    if not invoice_ids:
+        logger.info("No invoice_ids on PO — skipping PRQ fetch")
         return []
 
     payload = _build_payload(
         model="account.move",
-        method="search_read",
-        args=[[
-            ["purchase_id", "=", odoo_po_id],
-            ["move_type", "=", "in_invoice"],
-        ]],
+        method="read",
+        args=[invoice_ids],
         kwargs={"fields": PRQ_FIELDS},
     )
     try:
         result = await _post(payload)
-        logger.info("Fetched %d PRQ(s) for Odoo PO id=%s", len(result or []), odoo_po_id)
+        logger.info("Fetched %d PRQ(s) for invoice_ids=%s", len(result or []), invoice_ids)
         return result or []
     except Exception:
-        logger.exception("Failed to fetch PRQs for Odoo PO id=%s", odoo_po_id)
+        logger.exception("Failed to fetch PRQs for invoice_ids=%s", invoice_ids)
         return []
 
 
