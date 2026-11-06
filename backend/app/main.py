@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import Base, engine
+from app import models as _models  # noqa: F401 — registers all ORM models with Base.metadata
 from app.routers import odoo_sync, po_assign, webhook
 
 logging.basicConfig(level=logging.INFO)
