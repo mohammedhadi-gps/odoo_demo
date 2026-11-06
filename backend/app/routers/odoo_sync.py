@@ -191,8 +191,10 @@ async def fetch_grn(row_id: int, db: Session = Depends(get_db)):
 @router.post("/po/{row_id}/fetch-prq", response_model=list[PRQReceiptOut])
 async def fetch_prq(row_id: int, db: Session = Depends(get_db)):
     """
-    Fetch vendor bills (PRQs / purchase invoices) from Odoo for a PO that is
-    in 'done' status. Replaces any previously stored PRQ records for this PO.
+    Fetch vendor bills (PRQs) from Odoo for a PO that is in 'done' status.
+    Uses the PO's invoice_ids field to read only the exact linked bills —
+    avoids a broad account.move search that would return every bill in Odoo.
+    Replaces any previously stored PRQ records for this PO.
     Only works for POs that have an odoo_id.
     """
     row = get_purchase_order(db, row_id)
@@ -209,12 +211,28 @@ async def fetch_prq(row_id: int, db: Session = Depends(get_db)):
             detail="This PO has no Odoo ID — cannot fetch PRQ.",
         )
 
-    prq_data = await fetch_prq_for_po(row.odoo_id)
+    # Step 1: fetch the PO record to get its invoice_ids list
+    po_data = await fetch_purchase_order(row.odoo_id)
+    if not po_data:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not fetch PO {row.odoo_id} from Odoo. Check ODOO_* env vars and connectivity.",
+        )
+
+    invoice_ids = po_data.get("invoice_ids") or []
+    if not invoice_ids:
+        raise HTTPException(
+            status_code=502,
+            detail=f"No vendor bills linked to PO {row.odoo_id} in Odoo. "
+                   "They appear after a vendor bill is created and confirmed in Odoo.",
+        )
+
+    # Step 2: read exactly those account.move records by ID
+    prq_data = await fetch_prq_for_po(invoice_ids)
     if not prq_data:
         raise HTTPException(
             status_code=502,
-            detail=f"No vendor bills found in Odoo for PO {row.odoo_id}. "
-                   "They appear after a vendor bill is created and linked to the PO in Odoo.",
+            detail=f"Could not read vendor bill records from Odoo for invoice_ids={invoice_ids}.",
         )
 
     # Replace existing PRQ records for this PO
